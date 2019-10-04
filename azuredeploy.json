@@ -1,0 +1,211 @@
+{
+    "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "functionAppName": {
+            "type": "string",
+            "metadata": {
+                "description": "The name of key vault"
+            }
+        },
+        "functionAppLocation": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().location]",
+            "metadata": {
+                "description": "Specify the location for the function application resources"
+            }
+        },
+        "ApplicationInsightsLocation": {
+            "type": "string",
+            "defaultValue": "West Europe",
+            "allowedValues": [
+                "East US",
+                "South Central US",
+                "North Europe",
+                "West Europe",
+                "Southeast Asia",
+                "West US 2",
+                "Central India",
+                "Canada Central",
+                "UK South"
+            ],
+            "metadata": {
+                "description": "Specify the region for Application Insights data"
+            }
+        },
+        "runtimeStack": {
+            "type": "string",
+            "defaultValue": "powershell",
+            "allowedValues": [
+                "powershell",
+                "dotnet",
+                "node",
+                "java"
+            ],
+            "metadata": {
+                "description": "Pick the language runtime that you want enabled"
+            }
+        },
+        "ADUser": {
+            "type": "string",
+            "metadata": {
+                "description": "The username of the active directory user to log in with"
+            }
+        },
+        "keyVaultName": {
+            "type": "string",
+            "metadata": {
+                "description": "The name of key vault"
+            }
+        },
+        "keyVaultLocation": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().location]",
+            "metadata": {
+                "description": "Specifies the Azure location where the key vault should be created."
+            }
+        },
+        "tenantId": {
+            "type": "string",
+            "defaultValue": "[subscription().tenantId]",
+            "metadata": {
+                "description": "Specifies the Azure Active Directory tenant ID that should be used for authenticating requests to the key vault. Get it by using Get-AzSubscription cmdlet."
+            }
+        },
+        "secretsPermissions": {
+            "type": "array",
+            "defaultValue": [
+                "list",
+                "get"
+            ],
+            "metadata": {
+                "description": "Specifies the permissions to secrets in the vault. Valid values are: all, get, list, set, delete, backup, restore, recover, and purge."
+            }
+        },
+        "skuName": {
+            "type": "string",
+            "defaultValue": "Standard",
+            "allowedValues": [
+                "Standard",
+                "Premium"
+            ],
+            "metadata": {
+                "description": "Specifies whether the key vault is a standard vault or a premium vault."
+            }
+        },
+        "secretName": {
+            "type": "string",
+             "defaultValue": "ADUserPassword",
+            "metadata": {
+                "description": "Name of the password secret for the AD User. Use ADUserPassword as it is referenced in the PowerShell script"
+            }
+        },
+        "ADUserPassword": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Value of the password secret for the AD user"
+            }
+        }
+    },
+    "variables": {
+        "functionAppIdentityUrl": "https://raw.githubusercontent.com/eamonoreilly/ManageAzureActiveDirectoryWithPowerShellFunction/master/nestedtemplates/functionAppIdentity.json",
+        "functionAppUrl": "https://raw.githubusercontent.com/eamonoreilly/ManageAzureActiveDirectoryWithPowerShellFunction/master/nestedtemplates/functionapp.json",
+        "keyVaultUrl": "https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/201-key-vault-secret-create/azuredeploy.json",
+        "secrets": "[concat('{\"secrets\": [{\"secretName\":','\"',parameters('secretName'),'\"',',\"secretValue\":','\"',parameters('ADUserPassword'),'\"}]}')]",
+        "secretsObject": "[json(variables('secrets'))]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2019-05-01",
+            "name": "KeyVault",
+            "dependsOn": [
+                "[concat('Microsoft.Resources/deployments/', 'functionIdentity')]"
+            ],
+            "properties": {
+                "mode": "Incremental",
+                "templateLink": {
+                    "uri": "[variables('keyVaultUrl')]",
+                    "contentVersion": "1.0.0.0"
+                },
+                "parameters": {
+                    "keyVaultName": {
+                        "value": "[parameters('keyVaultName')]"
+                    },
+                    "location": {
+                        "value": "[parameters('keyVaultLocation')]"
+                    },
+                    "tenantId": {
+                        "value": "[parameters('tenantId')]"
+                    },
+                    "objectId": {
+                        "value": "[reference('functionIdentity').outputs.objectId.value]"
+                    },
+                    "secretsPermissions": {
+                        "value": "[parameters('secretsPermissions')]"
+                    },
+                    "skuName": {
+                        "value": "[parameters('skuName')]"
+                    },
+                    "secretsObject": {
+                        "value": "[variables('secretsObject')]"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2019-05-01",
+            "name": "functionApp",
+            "properties": {
+                "mode": "Incremental",
+                "templateLink": {
+                    "uri": "[variables('functionAppUrl')]",
+                    "contentVersion": "1.0.0.0"
+                },
+                "parameters": {
+                    "functionAppName": {
+                        "value": "[parameters('functionAppName')]"
+                    },
+                    "location": {
+                        "value": "[parameters('functionAppLocation')]"
+                    },
+                    "ApplicationInsightsLocation": {
+                        "value": "[parameters('ApplicationInsightsLocation')]"
+                    },
+                    "runtimeStack": {
+                        "value": "[parameters('runtimeStack')]"
+                    },
+                    "ADUser": {
+                        "value": "[parameters('ADUser')]"
+                    },
+                    "keyVaultName": {
+                        "value": "[parameters('keyVaultName')]"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2019-05-01",
+            "name": "functionIdentity",
+            "dependsOn": [
+                "[concat('Microsoft.Resources/deployments/', 'functionApp')]"
+            ],
+            "properties": {
+                "mode": "Incremental",
+                "templateLink": {
+                    "uri": "[variables('functionAppIdentityUrl')]",
+                    "contentVersion": "1.0.0.0"
+                },
+                "parameters": {
+                    "functionAppName": {
+                        "value": "[parameters('functionAppName')]"
+                    }
+                }
+            }
+        }
+    ],
+    "outputs": {
+    }
+}
